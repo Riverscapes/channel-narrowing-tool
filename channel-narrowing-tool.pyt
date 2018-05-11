@@ -22,20 +22,27 @@ class ChannelNarrowingTool(object):
     def getParameterInfo(self):
         """Define parameter definitions"""
         param0 = arcpy.Parameter(
-            displayName="Stream Network",
-            name="streamNetwork",
+            displayName="Historic Bankfull Polygon",
+            name="historicBankfull",
             datatype="DEFeatureClass",
             parameterType="Required",
             direction="Input")
 
         param1 = arcpy.Parameter(
+            displayName="Modern Bankfull Polygon",
+            name="modernBankfull",
+            datatype="DEFeatureClass",
+            parameterType="Required",
+            direction="Input")
+
+        param2 = arcpy.Parameter(
             displayName="Select Output Location",
             name="outputFolder",
             datatype="DEFolder",
             parameterType="Required",
             direction="Input")
 
-        param2 = arcpy.Parameter(
+        param3 = arcpy.Parameter(
             displayName="Select Output Name",
             name="outputName",
             datatype="GPString",

@@ -2,14 +2,12 @@
 import arcpy
 
 
-def main(streamNetwork, outputFolder, outputName):
+def main(modernBankfull, historicBankfull, outputFolder, outputName):
     """
     Source code of the tool
-    :param streamNetwork:
-    :param outputFolder:
-    :param outputName:
+    :param modernBankfull: A polygon with the modern bankfull value
+    :param historicBankfull: A polygon with the historic bankfull value
+    :param outputFolder: Where the project folder should go
+    :param outputName: What the output should be named
     :return:
     """
-    arcpy.AddMessage(outputName)
-    arcpy.AddMessage(streamNetwork)
-    arcpy.AddMessage(outputFolder)
