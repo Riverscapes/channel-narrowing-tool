@@ -36,20 +36,34 @@ class ChannelNarrowingTool(object):
             direction="Input")
 
         param2 = arcpy.Parameter(
+            displayName="Reach Breaks",
+            name="reachBreaks",
+            datatype="DEFeatureClass",
+            parameterType="Optional",
+            direction="Input")
+
+        param3 = arcpy.Parameter(
             displayName="Select Output Location",
             name="outputFolder",
             datatype="DEFolder",
             parameterType="Required",
             direction="Input")
 
-        param3 = arcpy.Parameter(
+        param4 = arcpy.Parameter(
             displayName="Select Output Name",
             name="outputName",
             datatype="GPString",
             parameterType="Required",
             direction="Input")
 
-        params = [param0, param1, param2]
+        param5 = arcpy.Parameter(
+            displayName="Are Inputs Already Segmented?",
+            name="isSegmented",
+            datatype="GPBoolean",
+            parameterType="Optional",
+            direction="Input")
+
+        params = [param0, param1, param2, param3, param4, param5]
         return params
 
     def isLicensed(self):
@@ -72,5 +86,8 @@ class ChannelNarrowingTool(object):
         reload(ChannelNarrowing)
         ChannelNarrowing.main(p[0].valueAsText,
                               p[1].valueAsText,
-                              p[2].valueAsText)
+                              p[2].valueAsText,
+                              p[3].valueAsText,
+                              p[4].valueAsText,
+                              p[5].valueAsText)
         return
