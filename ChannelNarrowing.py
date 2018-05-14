@@ -23,29 +23,32 @@ def main(historicBankfull, modernBankfull, reachBreak, outputFolder, outputName,
         raise Exception("You did not provide a way for us to segment the inputs!")
 
     outputFolder = makeFolder(outputFolder, "ChannelNarrowingProject")
-    tempFolder = makeFolder(outputFolder, "Temp")
-    scratch = tempFolder
 
     if not isSegmented:
-        historicBankfull, modernBankfull = segmentBankfull(historicBankfull, modernBankfull, reachBreak, scratch)
-
-    arcpy.AddMessage(historicBankfull)
-    arcpy.AddMessage(modernBankfull)
+        intermediaryFolder = makeFolder(outputFolder, "02_Intermediaries")
+        historicBankfull, modernBankfull = segmentBankfull(historicBankfull, modernBankfull, reachBreak, intermediaryFolder)
 
 
-def segmentBankfull(historicBankfull, modernBankfull, reachBreak, scratch):
+
+
+def segmentBankfull(historicBankfull, modernBankfull, reachBreak, intermediaryFolder):
     """
     Segments the inputs based on the reach breaks given to it
     :param historicBankfull: A polygon with the historic bankfull value
     :param modernBankfull: A polygon with the modern bankfull value
     :param reachBreak: A series of lines that tell us when to break the thing
-    :param scratch: Where we put our temporary output
+    :param intermediaryFolder: Where we put our intermediary output
     :return: None
     """
-    segHistoricBankfull = os.path.join(scratch, "historicBankfull.shp")
-    segModernBankfull = os.path.join(scratch, "modernBankfull.shp")
+    segHistoricBankfullFolder = makeFolder(intermediaryFolder, "01_HistoricBankfullSegmented")
+    segModernBankfullFolder = makeFolder(intermediaryFolder, "02_ModernBankfullSegmented")
+
+    segHistoricBankfull = os.path.join(segHistoricBankfullFolder, "historicBankfull.shp")
+    segModernBankfull = os.path.join(segModernBankfullFolder, "modernBankfull.shp")
+
     arcpy.Delete_management(segHistoricBankfull)
     arcpy.Delete_management(segModernBankfull)
+
     arcpy.FeatureToPolygon_management([historicBankfull, reachBreak], segHistoricBankfull)
     arcpy.FeatureToPolygon_management([modernBankfull, reachBreak], segModernBankfull)
 
