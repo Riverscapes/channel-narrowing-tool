@@ -3,12 +3,13 @@ import arcpy
 import os
 
 
-def main(historicBankfull, modernBankfull, reachBreak, outputFolder, outputName, isSegmented):
+def main(historicBankfull, modernBankfull, reachBreak, centerline, outputFolder, outputName, isSegmented):
     """
     Source code of the tool
     :param historicBankfull: A polygon with the historic bankfull value
     :param modernBankfull: A polygon with the modern bankfull value
     :param reachBreak: A series of lines that tell us when to break the thing
+    :param centerline: The centerline of the modern bankfull polygon
     :param outputFolder: Where the project folder should go
     :param outputName: What the output should be named
     :param isSegmented: Tells us if the technician has segmented the input beforehand
@@ -24,9 +25,6 @@ def main(historicBankfull, modernBankfull, reachBreak, outputFolder, outputName,
     if not isSegmented:
         intermediaryFolder = makeFolder(outputFolder, "02_Intermediaries")
         historicBankfull, modernBankfull = segmentBankfull(historicBankfull, modernBankfull, reachBreak, intermediaryFolder)
-
-
-
 
 
 
@@ -47,16 +45,15 @@ def segmentBankfull(historicBankfull, modernBankfull, reachBreak, intermediaryFo
     modernBankfullLayer = os.path.join(segModernBankfullFolder, "old.lyr")
     arcpy.MakeFeatureLayer_management(modernBankfull, modernBankfullLayer)
 
-    segHistoricBankfull = os.path.join(segHistoricBankfullFolder, "historicBankfull.shp")
-    segModernBankfull = os.path.join(segModernBankfullFolder, "modernBankfull.shp")
-
-    clippedSegHistoricBankfull = os.path.join(segHistoricBankfullFolder, "BetterHistoric.shp")
-    clippedSegModernBankfull = os.path.join(segModernBankfullFolder, "BetterModern.shp")
+    segHistoricBankfull = os.path.join(segHistoricBankfullFolder, "HistoricBankfull.shp")
+    segModernBankfull = os.path.join(segModernBankfullFolder, "ModernBankfull.shp")
+    cleanedSegHistoricBankfull = os.path.join(segHistoricBankfullFolder, "CleanedHistoricBankfull.shp")
+    cleanedSegModernBankfull = os.path.join(segModernBankfullFolder, "CleanedModernBankfull.shp")
 
     arcpy.Delete_management(segHistoricBankfull)
     arcpy.Delete_management(segModernBankfull)
-    arcpy.Delete_management(clippedSegHistoricBankfull)
-    arcpy.Delete_management(clippedSegModernBankfull)
+    arcpy.Delete_management(cleanedSegHistoricBankfull)
+    arcpy.Delete_management(cleanedSegModernBankfull)
 
     segHistoricBankfullLayer = os.path.join(segHistoricBankfullFolder, "historicBankfull_lyr")
     segModernBankfullLayer = os.path.join(segModernBankfullFolder, "modernBankfull_lyr")
@@ -66,15 +63,13 @@ def segmentBankfull(historicBankfull, modernBankfull, reachBreak, intermediaryFo
     arcpy.FeatureToPolygon_management([modernBankfull, reachBreak], segModernBankfull)
     arcpy.MakeFeatureLayer_management(segModernBankfull, segModernBankfullLayer)
 
-    cleanedSegHistoricBankfull = os.path.join(segHistoricBankfullFolder, "BetterHistoric.shp")
     arcpy.SelectLayerByLocation_management(segHistoricBankfullLayer, "WITHIN", historicBankfullLayer)
     arcpy.CopyFeatures_management(segHistoricBankfullLayer, cleanedSegHistoricBankfull)
 
-    cleanedSegModernBankfull = os.path.join(segModernBankfullFolder, "CleanedModernBankfull.shp")
     arcpy.SelectLayerByLocation_management(segModernBankfullLayer, "WITHIN", modernBankfullLayer)
     arcpy.CopyFeatures_management(segModernBankfullLayer, cleanedSegModernBankfull)
 
-    return segHistoricBankfull, segModernBankfull
+    return cleanedSegModernBankfull, cleanedSegHistoricBankfull
 
 def makeFolder(pathToLocation, newFolderName):
     """
