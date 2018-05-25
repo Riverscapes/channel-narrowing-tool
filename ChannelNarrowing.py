@@ -27,8 +27,8 @@ def main(historicBankfull, modernBankfull, reachBreak, centerline, outputFolderL
 
     outputFolder, intermediateFolder, analysesFolder, historicBankfull, modernBankfull = writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBreak, isSegmented)
 
-
     assignArea(historicBankfull)
+    assignArea(modernBankfull)
 
 
 def writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBreak, isSegmented):
@@ -57,8 +57,6 @@ def writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBrea
     arcpy.AddMessage("Making Analyses...")
     analysesFolder = makeFolder(outputFolder, findAvailableNum(outputFolder) + "_Analyses")
     return outputFolder, intermediateFolder, analysesFolder, historicBankfull, modernBankfull
-
-
 
 
 def copyInputs(inputFolder, historicBankfull, modernBankfull, centerline, reachBreak):
@@ -90,8 +88,6 @@ def copyInputs(inputFolder, historicBankfull, modernBankfull, centerline, reachB
         arcpy.CopyFeatures_management(reachBreak, reachBreakCopy)
 
     return historicBankfullCopy, modernBankfullCopy, centerlineCopy, reachBreakCopy
-
-
 
 
 def segmentBankfull(historicBankfull, modernBankfull, reachBreak, segHistoricBankfullFolder, segModernBankfullFolder):
@@ -141,9 +137,25 @@ def segmentBankfull(historicBankfull, modernBankfull, reachBreak, segHistoricBan
 def assignArea(featureClass):
     """
     Gives the feature class a field with the area
-    :param featureClass:
+    :param featureClass: The path to the shapefile that we'll modify
     :return:
     """
+    units = arcpy.Describe(featureClass).spatialReference.linearUnitName
+    arcpy.AddField_management(featureClass, "Sq_Meters", "DOUBLE")
+    with arcpy.da.UpdateCursor(featureClass, ['SHAPE@AREA', 'Sq_Meters']) as cursor:
+        for row in cursor:
+            row[1] = getMeters(row[0], units)
+            cursor.updateRow(row)
+
+
+def getMeters(area, units):
+    arcpy.AddMessage(units)
+    if units.lower() == "foot":
+        return area * 0.3048
+    elif units.lower() == "meter":
+        return area
+    else:
+        raise Exception("Unit type \"" + units + "\" is not supported by the converter")
 
 
 def makeFolder(pathToLocation, newFolderName):
