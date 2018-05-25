@@ -3,43 +3,108 @@ import arcpy
 import os
 
 
-def main(historicBankfull, modernBankfull, reachBreak, centerline, outputFolder, outputName, isSegmented):
+def main(historicBankfull, modernBankfull, reachBreak, centerline, outputFolderLocation, outputName, isSegmented):
     """
     Source code of the tool
     :param historicBankfull: A polygon with the historic bankfull value
     :param modernBankfull: A polygon with the modern bankfull value
     :param reachBreak: A series of lines that tell us when to break the thing
     :param centerline: The centerline of the modern bankfull polygon
-    :param outputFolder: Where the project folder should go
+    :param outputFolderLocation: Where the project folder should go
     :param outputName: What the output should be named
     :param isSegmented: Tells us if the technician has segmented the input beforehand
     :return:
     """
+    arcpy.env.overwriteOutput = True
     isSegmented = parseArcBool(isSegmented)
 
     if not isSegmented and not reachBreak:
         raise Exception("You did not provide a way for us to segment the inputs!")
 
-    outputFolder = makeFolder(outputFolder, "ChannelNarrowingProject")
+    projectFolder = makeFolder(outputFolderLocation, "ChannelNarrowingProject")
+    inputFolder = makeFolder(projectFolder, "01_Inputs")
+    historicBankfull, modernBankfull, centerline, reachBreak = copyInputs(inputFolder, historicBankfull, modernBankfull, centerline, reachBreak)
 
+    outputFolder, intermediateFolder, analysesFolder, historicBankfull, modernBankfull = writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBreak, isSegmented)
+
+
+    assignArea(historicBankfull)
+
+
+def writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBreak, isSegmented):
+    """
+
+    :param projectFolder:
+    :param historicBankfull:
+    :param modernBankfull:
+    :param isSegmented:
+    :return:
+    """
+    j = 1
+    outputFolder = os.path.join(projectFolder, "Output_" + str(j))
+    while os.path.exists(outputFolder):
+        j += 1
+        outputFolder = os.path.join(projectFolder, "Output_" + str(j))
+    os.mkdir(outputFolder)
+
+    intermediateFolder = None
     if not isSegmented:
-        intermediaryFolder = makeFolder(outputFolder, "02_Intermediaries")
-        historicBankfull, modernBankfull = segmentBankfull(historicBankfull, modernBankfull, reachBreak, intermediaryFolder)
+        intermediateFolder = makeFolder(outputFolder, "01_Intermediates")
+        segHistoricBankfullFolder = makeFolder(intermediateFolder, "01_HistoricBankfullSegmented")
+        segModernBankfullFolder = makeFolder(intermediateFolder, "02_ModernBankfullSegmented")
+        historicBankfull, modernBankfull = segmentBankfull(historicBankfull, modernBankfull, reachBreak, segHistoricBankfullFolder, segModernBankfullFolder)
+
+    arcpy.AddMessage("Making Analyses...")
+    analysesFolder = makeFolder(outputFolder, findAvailableNum(outputFolder) + "_Analyses")
+    return outputFolder, intermediateFolder, analysesFolder, historicBankfull, modernBankfull
 
 
 
-def segmentBankfull(historicBankfull, modernBankfull, reachBreak, intermediaryFolder):
+
+def copyInputs(inputFolder, historicBankfull, modernBankfull, centerline, reachBreak):
+    """
+    Puts the inputs in the proper folder structure
+    :param inputFolder: Where to put everything
+    :param historicBankfull: A polygon with the historic bankfull value
+    :param modernBankfull: A polygon with the modern bankfull value
+    :param centerline: The centerline of the modern bankfull polygon
+    :param reachBreak: A series of lines that tell us when to break the thing
+    :return: A tuple with the paths to the copies of the inputs
+    """
+    historicBankfullFolder = makeFolder(inputFolder, "01_HistoricBankfullSegmented")
+    historicBankfullCopy = os.path.join(historicBankfullFolder, os.path.basename(historicBankfull))
+    arcpy.CopyFeatures_management(historicBankfull, historicBankfullCopy)
+
+    modernBankfullFolder = makeFolder(inputFolder, "02_ModernBankfullSegmented")
+    modernBankfullCopy = os.path.join(modernBankfullFolder, os.path.basename(modernBankfull))
+    arcpy.CopyFeatures_management(modernBankfull, modernBankfullCopy)
+
+    centerlineFolder = makeFolder(inputFolder, "03_Centerline")
+    centerlineCopy = os.path.join(centerlineFolder, os.path.basename(centerline))
+    arcpy.CopyFeatures_management(centerline, centerlineCopy)
+
+    reachBreakCopy = None
+    if reachBreak:
+        reachBreakFolder = makeFolder(inputFolder, "04_ReachBreaks")
+        reachBreakCopy = os.path.join(reachBreakFolder, os.path.basename(reachBreak))
+        arcpy.CopyFeatures_management(reachBreak, reachBreakCopy)
+
+    return historicBankfullCopy, modernBankfullCopy, centerlineCopy, reachBreakCopy
+
+
+
+
+def segmentBankfull(historicBankfull, modernBankfull, reachBreak, segHistoricBankfullFolder, segModernBankfullFolder):
     """
     Segments the inputs based on the reach breaks given to it
     :param historicBankfull: A polygon with the historic bankfull value
     :param modernBankfull: A polygon with the modern bankfull value
     :param reachBreak: A series of lines that tell us when to break the thing
-    :param intermediaryFolder: Where we put our intermediary output
+    :param segHistoricBankfullFolder: Where to put the historic bankfull value
+    :param segModernBankfullFolder: Where to put the modern bankfull value
     :return: The paths to the segmented modern and historic bankfull shape files, respectively
     :rtype: A tuple of strings with length 2
     """
-    segHistoricBankfullFolder = makeFolder(intermediaryFolder, "01_HistoricBankfullSegmented")
-    segModernBankfullFolder = makeFolder(intermediaryFolder, "02_ModernBankfullSegmented")
 
     historicBankfullLayer = os.path.join(segHistoricBankfullFolder, "old.lyr")
     arcpy.MakeFeatureLayer_management(historicBankfull, historicBankfullLayer)
@@ -73,6 +138,14 @@ def segmentBankfull(historicBankfull, modernBankfull, reachBreak, intermediaryFo
     return cleanedSegModernBankfull, cleanedSegHistoricBankfull
 
 
+def assignArea(featureClass):
+    """
+    Gives the feature class a field with the area
+    :param featureClass:
+    :return:
+    """
+
+
 def makeFolder(pathToLocation, newFolderName):
     """
     Makes a folder and returns the path to it
@@ -96,3 +169,21 @@ def parseArcBool(givenBool):
         return False
     else:
         return True
+
+
+def findAvailableNum(folderRoot):
+    """
+    Tells us the next number for a folder in the directory given
+    :param folderRoot: Where we want to look for a number
+    :return: A string, containing a number
+    """
+    takenNums = [fileName[0:2] for fileName in os.listdir(folderRoot)]
+    POSSIBLENUMS = range(1, 100)
+    for i in POSSIBLENUMS:
+        stringVersion = str(i)
+        if i < 10:
+            stringVersion = '0' + stringVersion
+        if stringVersion not in takenNums:
+            return stringVersion
+    arcpy.AddWarning("There were too many files at " + folderRoot + " to have another folder that fits our naming convention")
+    return "100"
