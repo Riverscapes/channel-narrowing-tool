@@ -35,7 +35,8 @@ def segmentBankfull(historicBankfull, modernBankfull, reachBreak, intermediaryFo
     :param modernBankfull: A polygon with the modern bankfull value
     :param reachBreak: A series of lines that tell us when to break the thing
     :param intermediaryFolder: Where we put our intermediary output
-    :return: None
+    :return: The paths to the segmented modern and historic bankfull shape files, respectively
+    :rtype: A tuple of strings with length 2
     """
     segHistoricBankfullFolder = makeFolder(intermediaryFolder, "01_HistoricBankfullSegmented")
     segModernBankfullFolder = makeFolder(intermediaryFolder, "02_ModernBankfullSegmented")
@@ -70,6 +71,7 @@ def segmentBankfull(historicBankfull, modernBankfull, reachBreak, intermediaryFo
     arcpy.CopyFeatures_management(segModernBankfullLayer, cleanedSegModernBankfull)
 
     return cleanedSegModernBankfull, cleanedSegHistoricBankfull
+
 
 def makeFolder(pathToLocation, newFolderName):
     """
