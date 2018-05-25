@@ -18,6 +18,7 @@ def main(historicBankfull, modernBankfull, reachBreak, centerline, outputFolderL
     arcpy.env.overwriteOutput = True
     isSegmented = parseArcBool(isSegmented)
 
+
     if not isSegmented and not reachBreak:
         raise Exception("You did not provide a way for us to segment the inputs!")
 
@@ -25,10 +26,18 @@ def main(historicBankfull, modernBankfull, reachBreak, centerline, outputFolderL
     inputFolder = makeFolder(projectFolder, "01_Inputs")
     historicBankfull, modernBankfull, centerline, reachBreak = copyInputs(inputFolder, historicBankfull, modernBankfull, centerline, reachBreak)
 
-    outputFolder, intermediateFolder, analysesFolder, historicBankfull, modernBankfull = writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBreak, isSegmented)
+    outputFolder, analysesFolder, historicBankfull, modernBankfull = writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBreak, isSegmented)
 
-    assignArea(historicBankfull)
-    assignArea(modernBankfull)
+    assignArea(historicBankfull, "Hist_Area")
+    assignArea(modernBankfull, "Crnt_Area")
+
+    historicBankfullLayer = "historicBankful_lyr"
+    modernBankfullLayer = "modernBankful_lyr"
+    arcpy.MakeFeatureLayer_management(historicBankfull, historicBankfullLayer)
+    arcpy.MakeFeatureLayer_management(modernBankfull, modernBankfullLayer)
+    outputFile = os.path.join(analysesFolder, "ChannelNarrowing.shp")
+
+    arcpy.SpatialJoin_analysis(modernBankfullLayer, historicBankfullLayer, outputFile, match_option="WITHIN")
 
 
 def writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBreak, isSegmented):
@@ -52,11 +61,11 @@ def writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBrea
         intermediateFolder = makeFolder(outputFolder, "01_Intermediates")
         segHistoricBankfullFolder = makeFolder(intermediateFolder, "01_HistoricBankfullSegmented")
         segModernBankfullFolder = makeFolder(intermediateFolder, "02_ModernBankfullSegmented")
-        historicBankfull, modernBankfull = segmentBankfull(historicBankfull, modernBankfull, reachBreak, segHistoricBankfullFolder, segModernBankfullFolder)
+        modernBankfull, historicBankfull = segmentBankfull(historicBankfull, modernBankfull, reachBreak, segHistoricBankfullFolder, segModernBankfullFolder)
 
     arcpy.AddMessage("Making Analyses...")
     analysesFolder = makeFolder(outputFolder, findAvailableNum(outputFolder) + "_Analyses")
-    return outputFolder, intermediateFolder, analysesFolder, historicBankfull, modernBankfull
+    return outputFolder, analysesFolder, historicBankfull, modernBankfull
 
 
 def copyInputs(inputFolder, historicBankfull, modernBankfull, centerline, reachBreak):
@@ -71,21 +80,21 @@ def copyInputs(inputFolder, historicBankfull, modernBankfull, centerline, reachB
     """
     historicBankfullFolder = makeFolder(inputFolder, "01_HistoricBankfullSegmented")
     historicBankfullCopy = os.path.join(historicBankfullFolder, os.path.basename(historicBankfull))
-    arcpy.CopyFeatures_management(historicBankfull, historicBankfullCopy)
+    arcpy.Copy_management(historicBankfull, historicBankfullCopy)
 
     modernBankfullFolder = makeFolder(inputFolder, "02_ModernBankfullSegmented")
     modernBankfullCopy = os.path.join(modernBankfullFolder, os.path.basename(modernBankfull))
-    arcpy.CopyFeatures_management(modernBankfull, modernBankfullCopy)
+    arcpy.Copy_management(modernBankfull, modernBankfullCopy)
 
     centerlineFolder = makeFolder(inputFolder, "03_Centerline")
     centerlineCopy = os.path.join(centerlineFolder, os.path.basename(centerline))
-    arcpy.CopyFeatures_management(centerline, centerlineCopy)
+    arcpy.Copy_management(centerline, centerlineCopy)
 
     reachBreakCopy = None
     if reachBreak:
         reachBreakFolder = makeFolder(inputFolder, "04_ReachBreaks")
         reachBreakCopy = os.path.join(reachBreakFolder, os.path.basename(reachBreak))
-        arcpy.CopyFeatures_management(reachBreak, reachBreakCopy)
+        arcpy.Copy_management(reachBreak, reachBreakCopy)
 
     return historicBankfullCopy, modernBankfullCopy, centerlineCopy, reachBreakCopy
 
@@ -117,8 +126,8 @@ def segmentBankfull(historicBankfull, modernBankfull, reachBreak, segHistoricBan
     arcpy.Delete_management(cleanedSegHistoricBankfull)
     arcpy.Delete_management(cleanedSegModernBankfull)
 
-    segHistoricBankfullLayer = os.path.join(segHistoricBankfullFolder, "historicBankfull_lyr")
-    segModernBankfullLayer = os.path.join(segModernBankfullFolder, "modernBankfull_lyr")
+    segHistoricBankfullLayer = "historicBankfull_lyr"
+    segModernBankfullLayer = "modernBankfull_lyr"
 
     arcpy.FeatureToPolygon_management([historicBankfull, reachBreak], segHistoricBankfull)
     arcpy.MakeFeatureLayer_management(segHistoricBankfull, segHistoricBankfullLayer)
@@ -134,22 +143,22 @@ def segmentBankfull(historicBankfull, modernBankfull, reachBreak, segHistoricBan
     return cleanedSegModernBankfull, cleanedSegHistoricBankfull
 
 
-def assignArea(featureClass):
+def assignArea(featureClass, fieldName='Sq_Meters'):
     """
     Gives the feature class a field with the area
     :param featureClass: The path to the shapefile that we'll modify
+    :param fieldName: What we'll name the field
     :return:
     """
     units = arcpy.Describe(featureClass).spatialReference.linearUnitName
-    arcpy.AddField_management(featureClass, "Sq_Meters", "DOUBLE")
-    with arcpy.da.UpdateCursor(featureClass, ['SHAPE@AREA', 'Sq_Meters']) as cursor:
+    arcpy.AddField_management(featureClass, fieldName, "DOUBLE")
+    with arcpy.da.UpdateCursor(featureClass, ['SHAPE@AREA', fieldName]) as cursor:
         for row in cursor:
             row[1] = getMeters(row[0], units)
             cursor.updateRow(row)
 
 
 def getMeters(area, units):
-    arcpy.AddMessage(units)
     if units.lower() == "foot":
         return area * 0.3048
     elif units.lower() == "meter":
