@@ -27,8 +27,9 @@ def main(historicBankfull, modernBankfull, reachBreaks, centerline, outputFolder
 
     outputFolder, analysesFolder, historicBankfull, modernBankfull, centerline = writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBreaks, centerline, isSegmented)
 
-    assignArea(historicBankfull, "Hist_Area")
-    assignArea(modernBankfull, "Crnt_Area")
+    addedFields = ["Hist_Area", "Crnt_Area", "Seg_Length"]
+    assignArea(historicBankfull, addedFields[0])
+    assignArea(modernBankfull, addedFields[1])
 
     historicBankfullLayer = "historicBankful_lyr"
     modernBankfullLayer = "modernBankful_lyr"
@@ -38,7 +39,18 @@ def main(historicBankfull, modernBankfull, reachBreaks, centerline, outputFolder
 
     arcpy.SpatialJoin_analysis(modernBankfullLayer, historicBankfullLayer, polygonOutputFile, match_option="INTERSECT")
 
+    polylineOutputFile = os.path.join(analysesFolder, outputName + "_Polyline.shp")
 
+    polygonOutputLayer = "PolygonOutput_lyr"
+    centerlineLayer = "Centerline_lyr"
+    arcpy.MakeFeatureLayer_management(centerline, centerlineLayer)
+    arcpy.MakeFeatureLayer_management(polygonOutputFile, polygonOutputLayer)
+
+    arcpy.SpatialJoin_analysis(centerlineLayer, polygonOutputLayer, polylineOutputFile, match_option="INTERSECT")
+    assignLength(polylineOutputFile, addedFields[2])
+    cleanUpFields(polylineOutputFile, addedFields)
+
+    deleteWithArcpy([historicBankfullLayer, modernBankfullLayer, polygonOutputLayer, centerlineLayer])
 
 
 def writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBreaks, centerline, isSegmented):
@@ -83,7 +95,7 @@ def segmentCenterline(centerline, reachBreaks, intermediateFolder):
     arcpy.MakeFeatureLayer_management(centerline, givenBankfullLayer)
 
     segCenterline = os.path.join(centerlineFolder, "SegmentedCenterline.shp")
-    segCenterlineNew = os.path.join(centerlineFolder, "CleanedSegmentedCenterline")
+    cleanedSegCenterline = os.path.join(centerlineFolder, "CleanedSegmentedCenterline.shp")
     tempCenterlineLayer = "temp_lyr"
     segCenterlineLayer = "segCenterline_lyr"
     centerlineLayer = "centerline_lyr"
@@ -98,11 +110,14 @@ def segmentCenterline(centerline, reachBreaks, intermediateFolder):
 
     arcpy.MakeFeatureLayer_management(segCenterline, segCenterlineLayer)
     arcpy.MakeFeatureLayer_management(centerline, centerlineLayer)
+    arcpy.Delete_management(tempCenterline)
 
     arcpy.SelectLayerByLocation_management(segCenterlineLayer, "WITHIN", givenBankfullLayer)
-    arcpy.CopyFeatures_management(segCenterlineLayer, segCenterlineNew)
+    arcpy.CopyFeatures_management(segCenterlineLayer, cleanedSegCenterline)
 
-    return segCenterline
+    deleteWithArcpy([givenBankfullLayer, tempCenterlineLayer, segCenterlineLayer, centerlineLayer])
+
+    return cleanedSegCenterline
 
 
 def copyInputs(inputFolder, historicBankfull, modernBankfull, centerline, reachBreak):
@@ -197,7 +212,12 @@ def segmentBankfull(givenBankfull, bufferedReachBreaks, outputLocation, outputNa
     arcpy.SelectLayerByLocation_management(tempSegBankfullLayer, "WITHIN", bufferedReachBreaks, invert_spatial_relationship="INVERT")
     arcpy.CopyFeatures_management(tempSegBankfullLayer, cleanedSegBankfull)
 
-    arcpy.Delete_management(tempSegBankfullLayer)
+    arcpy.Delete_management(tempSegBankfull)
+
+    cleanUpFields(segBankfull)
+    cleanUpFields(cleanedSegBankfull)
+
+    deleteWithArcpy([givenBankfullLayer, tempSegBankfullLayer, segBankfullLayer])
 
     return cleanedSegBankfull
 
@@ -213,13 +233,37 @@ def assignArea(featureClass, fieldName='Sq_Meters'):
     arcpy.AddField_management(featureClass, fieldName, "DOUBLE")
     with arcpy.da.UpdateCursor(featureClass, ['SHAPE@AREA', fieldName]) as cursor:
         for row in cursor:
-            row[1] = getMeters(row[0], units)
+            row[1] = getSqrMeters(row[0], units)
             cursor.updateRow(row)
 
 
-def getMeters(area, units):
+def assignLength(featureClass, fieldName="Length"):
+    """
+    Gives each segment an explicit value for its length, so that the data can be easily interrogated
+    :param featureClass: The path to the shapefile that we'll add length to
+    :param fieldName: What we want to call the new field
+    :return:
+    """
+    units = arcpy.Describe(featureClass).spatialReference.linearUnitName
+    arcpy.AddField_management(featureClass, fieldName, "DOUBLE")
+    with arcpy.da.UpdateCursor(featureClass, ['SHAPE@LENGTH', fieldName]) as cursor:
+        for row in cursor:
+            row[1] = getSqrMeters(row[0], units)
+            cursor.updateRow(row)
+
+
+def getMeters(length, units):
     if units.lower() == "foot":
-        return area * 0.3048
+        return length * 0.3048
+    elif units.lower() == "meter":
+        return length
+    else:
+        raise Exception("Unit type \"" + units + "\" is not supported by the converter")
+
+
+def getSqrMeters(area, units):
+    if units.lower() == "foot":
+        return area * 0.092903
     elif units.lower() == "meter":
         return area
     else:
@@ -267,3 +311,33 @@ def findAvailableNum(folderRoot):
             return stringVersion
     arcpy.AddWarning("There were too many files at " + folderRoot + " to have another folder that fits our naming convention")
     return "100"
+
+
+def cleanUpFields(outNetwork, newFields=[]):
+    """
+    Removes unnecessary fields
+    :param outNetwork: The output network
+    :param newFields: All the fields we want to keep
+    :return:
+    """
+    fields = arcpy.ListFields(outNetwork)
+    removeFields = []
+    for field in fields:
+        if field.baseName not in newFields and not field.required:
+            removeFields.append(field.baseName)
+
+    if len(fields) == len(removeFields) + 2:
+        removeFields = removeFields[:-1]
+
+    if len(removeFields) > 0:
+        arcpy.DeleteField_management(outNetwork, removeFields)
+
+
+def deleteWithArcpy(stuffToDelete):
+    """
+    Deletes everything in a list with arcpy.Delete_management()
+    :param stuffToDelete: A list of stuff to delete
+    :return:
+    """
+    for thing in stuffToDelete:
+        arcpy.Delete_management(thing)
