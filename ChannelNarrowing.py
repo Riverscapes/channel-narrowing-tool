@@ -37,7 +37,7 @@ def main(historicBankfull, modernBankfull, reachBreak, centerline, outputFolderL
     arcpy.MakeFeatureLayer_management(modernBankfull, modernBankfullLayer)
     outputFile = os.path.join(analysesFolder, "ChannelNarrowing.shp")
 
-    arcpy.SpatialJoin_analysis(modernBankfullLayer, historicBankfullLayer, outputFile, match_option="WITHIN")
+    arcpy.SpatialJoin_analysis(modernBankfullLayer, historicBankfullLayer, outputFile, match_option="INTERSECT")
 
 
 def writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBreak, isSegmented):
@@ -59,9 +59,7 @@ def writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBrea
     intermediateFolder = None
     if not isSegmented:
         intermediateFolder = makeFolder(outputFolder, "01_Intermediates")
-        segHistoricBankfullFolder = makeFolder(intermediateFolder, "01_HistoricBankfullSegmented")
-        segModernBankfullFolder = makeFolder(intermediateFolder, "02_ModernBankfullSegmented")
-        modernBankfull, historicBankfull = segmentBankfull(historicBankfull, modernBankfull, reachBreak, segHistoricBankfullFolder, segModernBankfullFolder)
+        modernBankfull, historicBankfull = segmentBankfulls(historicBankfull, modernBankfull, reachBreak, intermediateFolder)
 
     arcpy.AddMessage("Making Analyses...")
     analysesFolder = makeFolder(outputFolder, findAvailableNum(outputFolder) + "_Analyses")
@@ -94,53 +92,75 @@ def copyInputs(inputFolder, historicBankfull, modernBankfull, centerline, reachB
     if reachBreak:
         reachBreakFolder = makeFolder(inputFolder, "04_ReachBreaks")
         reachBreakCopy = os.path.join(reachBreakFolder, os.path.basename(reachBreak))
-        arcpy.Copy_management(reachBreak, reachBreakCopy)
+        if arcpy.Describe(reachBreak).shapeType == "Polygon":
+            arcpy.FeatureToLine_management(reachBreak, reachBreakCopy)
+        else:
+            arcpy.Copy_management(reachBreak, reachBreakCopy)
 
     return historicBankfullCopy, modernBankfullCopy, centerlineCopy, reachBreakCopy
 
 
-def segmentBankfull(historicBankfull, modernBankfull, reachBreak, segHistoricBankfullFolder, segModernBankfullFolder):
+def segmentBankfulls(historicBankfull, modernBankfull, reachBreak, intermediateFolder):
     """
     Segments the inputs based on the reach breaks given to it
     :param historicBankfull: A polygon with the historic bankfull value
     :param modernBankfull: A polygon with the modern bankfull value
     :param reachBreak: A series of lines that tell us when to break the thing
-    :param segHistoricBankfullFolder: Where to put the historic bankfull value
-    :param segModernBankfullFolder: Where to put the modern bankfull value
+    :param intermediateFolder: Path to the intermediates folder
     :return: The paths to the segmented modern and historic bankfull shape files, respectively
     :rtype: A tuple of strings with length 2
     """
+    bufferedReachBreaksFolder = makeFolder(intermediateFolder, "01_ReachBreakBuffer")
+    segHistoricBankfullFolder = makeFolder(intermediateFolder, "02_HistoricBankfullSegmented")
+    segModernBankfullFolder = makeFolder(intermediateFolder, "03_ModernBankfullSegmented")
 
-    historicBankfullLayer = os.path.join(segHistoricBankfullFolder, "old.lyr")
-    arcpy.MakeFeatureLayer_management(historicBankfull, historicBankfullLayer)
-    modernBankfullLayer = os.path.join(segModernBankfullFolder, "old.lyr")
-    arcpy.MakeFeatureLayer_management(modernBankfull, modernBankfullLayer)
+    bufferedReachBreaks = os.path.join(bufferedReachBreaksFolder, "Buffered_Reach_Breaks.shp")
+    arcpy.Buffer_analysis(reachBreak, bufferedReachBreaks, "1 Foot")
 
-    segHistoricBankfull = os.path.join(segHistoricBankfullFolder, "HistoricBankfull.shp")
-    segModernBankfull = os.path.join(segModernBankfullFolder, "ModernBankfull.shp")
-    cleanedSegHistoricBankfull = os.path.join(segHistoricBankfullFolder, "CleanedHistoricBankfull.shp")
-    cleanedSegModernBankfull = os.path.join(segModernBankfullFolder, "CleanedModernBankfull.shp")
-
-    arcpy.Delete_management(segHistoricBankfull)
-    arcpy.Delete_management(segModernBankfull)
-    arcpy.Delete_management(cleanedSegHistoricBankfull)
-    arcpy.Delete_management(cleanedSegModernBankfull)
-
-    segHistoricBankfullLayer = "historicBankfull_lyr"
-    segModernBankfullLayer = "modernBankfull_lyr"
-
-    arcpy.FeatureToPolygon_management([historicBankfull, reachBreak], segHistoricBankfull)
-    arcpy.MakeFeatureLayer_management(segHistoricBankfull, segHistoricBankfullLayer)
-    arcpy.FeatureToPolygon_management([modernBankfull, reachBreak], segModernBankfull)
-    arcpy.MakeFeatureLayer_management(segModernBankfull, segModernBankfullLayer)
-
-    arcpy.SelectLayerByLocation_management(segHistoricBankfullLayer, "WITHIN", historicBankfullLayer)
-    arcpy.CopyFeatures_management(segHistoricBankfullLayer, cleanedSegHistoricBankfull)
-
-    arcpy.SelectLayerByLocation_management(segModernBankfullLayer, "WITHIN", modernBankfullLayer)
-    arcpy.CopyFeatures_management(segModernBankfullLayer, cleanedSegModernBankfull)
+    cleanedSegModernBankfull = segmentBankfull(modernBankfull, bufferedReachBreaks, segModernBankfullFolder, "ModernBankfull")
+    cleanedSegHistoricBankfull = segmentBankfull(historicBankfull, bufferedReachBreaks, segHistoricBankfullFolder, "HistoricBankfull")
 
     return cleanedSegModernBankfull, cleanedSegHistoricBankfull
+
+
+def segmentBankfull(givenBankfull, bufferedReachBreaks, outputLocation, outputName):
+    """
+    Segments the given bankfull and returns a path to it
+    :param givenBankfull: What we want to segment
+    :param bufferedReachBreaks: What we segment with
+    :param outputLocation: Where we put the segmented bankfull
+    :param outputName: What we'll name the output
+    :return: Path to the segmented bankfull
+    """
+    givenBankfullLayer = os.path.join(outputLocation, "old.lyr")
+    arcpy.MakeFeatureLayer_management(givenBankfull, givenBankfullLayer)
+
+    segBankfull = os.path.join(outputLocation, outputName + ".shp")
+    tempSegBankfull = os.path.join(outputLocation, "Temp.shp")
+    tempSegBankfullLayer = "temp_lyr"
+    cleanedSegBankfull = os.path.join(outputLocation, "Cleaned" + outputName + ".shp")
+
+    arcpy.Delete_management(segBankfull)
+    arcpy.Delete_management(cleanedSegBankfull)
+    arcpy.Delete_management(tempSegBankfullLayer)
+
+    segBankfullLayer = outputName + "_lyr"
+
+    arcpy.FeatureToPolygon_management([givenBankfull, bufferedReachBreaks], segBankfull)
+
+    # Cleans up any polygons made by the Feature To Polygon tool
+    arcpy.MakeFeatureLayer_management(segBankfull, segBankfullLayer)
+    arcpy.SelectLayerByLocation_management(segBankfullLayer, "WITHIN", givenBankfullLayer)
+    arcpy.CopyFeatures_management(segBankfullLayer, tempSegBankfull)
+
+    #Remove Buffered region
+    arcpy.MakeFeatureLayer_management(tempSegBankfull, tempSegBankfullLayer)
+    arcpy.SelectLayerByLocation_management(tempSegBankfullLayer, "WITHIN", bufferedReachBreaks, invert_spatial_relationship="INVERT")
+    arcpy.CopyFeatures_management(tempSegBankfullLayer, cleanedSegBankfull)
+
+    arcpy.Delete_management(tempSegBankfullLayer)
+
+    return cleanedSegBankfull
 
 
 def assignArea(featureClass, fieldName='Sq_Meters'):
