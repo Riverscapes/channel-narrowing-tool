@@ -43,6 +43,7 @@ def main(historicBankfull, modernBankfull, reachBreaks, centerline, outputFolder
 
     polygonOutputLayer = "PolygonOutput_lyr"
     centerlineLayer = "Centerline_lyr"
+    polylineLayer = "Polyline_lyr"
     arcpy.MakeFeatureLayer_management(centerline, centerlineLayer)
     arcpy.MakeFeatureLayer_management(polygonOutputFile, polygonOutputLayer)
 
@@ -51,7 +52,13 @@ def main(historicBankfull, modernBankfull, reachBreaks, centerline, outputFolder
     assignCalcValues(polylineOutputFile, addedFields[3], addedFields[4], addedFields[5], addedFields[6])
     cleanUpFields(polylineOutputFile, addedFields)
 
-    deleteWithArcpy([historicBankfullLayer, modernBankfullLayer, polygonOutputLayer, centerlineLayer])
+    arcpy.MakeFeatureLayer_management(polylineOutputFile, polylineLayer)
+
+    arcpy.Delete_management(polygonOutputFile)
+    arcpy.SpatialJoin_analysis(modernBankfullLayer, polylineLayer, polygonOutputFile, match_option="INTERSECT")
+    cleanUpFields(polygonOutputFile, addedFields)
+
+    deleteWithArcpy([historicBankfullLayer, modernBankfullLayer, polygonOutputLayer, centerlineLayer, polylineLayer])
 
 
 def writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBreaks, centerline, isSegmented):
