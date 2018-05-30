@@ -44,33 +44,40 @@ class ChannelNarrowingTool(object):
 
         param3 = arcpy.Parameter(
             displayName="Modern Bankfull Centerline",
-            name="centerline",
+            name="modernCenterline",
             datatype="DEFeatureClass",
             parameterType="Required",
             direction="Input")
 
         param4 = arcpy.Parameter(
+            displayName="Historic Bankfull Centerline",
+            name="historicCenterline",
+            datatype="DEFeatureClass",
+            parameterType="Required",
+            direction="Input")
+
+        param5 = arcpy.Parameter(
             displayName="Select Output Location",
             name="outputFolder",
             datatype="DEFolder",
             parameterType="Required",
             direction="Input")
 
-        param5 = arcpy.Parameter(
+        param6 = arcpy.Parameter(
             displayName="Select Output Name",
             name="outputName",
             datatype="GPString",
             parameterType="Required",
             direction="Input")
 
-        param6 = arcpy.Parameter(
+        param7 = arcpy.Parameter(
             displayName="Are Inputs Already Segmented?",
             name="isSegmented",
             datatype="GPBoolean",
             parameterType="Optional",
             direction="Input")
 
-        params = [param0, param1, param2, param3, param4, param5, param6]
+        params = [param0, param1, param2, param3, param4, param5, param6, param7]
         return params
 
     def isLicensed(self):
@@ -97,5 +104,6 @@ class ChannelNarrowingTool(object):
                               p[3].valueAsText,
                               p[4].valueAsText,
                               p[5].valueAsText,
-                              p[6].valueAsText)
+                              p[6].valueAsText,
+                              p[7].valueAsText)
         return

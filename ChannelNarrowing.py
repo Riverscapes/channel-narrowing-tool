@@ -3,13 +3,13 @@ import arcpy
 import os
 
 
-def main(historicBankfull, modernBankfull, reachBreaks, centerline, outputFolderLocation, outputName, isSegmented):
+def main(historicBankfull, modernBankfull, reachBreaks, modernCenterline, historicCenterline, outputFolderLocation, outputName, isSegmented):
     """
     Source code of the tool
     :param historicBankfull: A polygon with the historic bankfull value
     :param modernBankfull: A polygon with the modern bankfull value
     :param reachBreaks: A series of lines that tell us when to break the thing
-    :param centerline: The centerline of the modern bankfull polygon
+    :param modernCenterline: The centerline of the modern bankfull polygon
     :param outputFolderLocation: Where the project folder should go
     :param outputName: What the output should be named
     :param isSegmented: Tells us if the technician has segmented the input beforehand
@@ -23,9 +23,14 @@ def main(historicBankfull, modernBankfull, reachBreaks, centerline, outputFolder
 
     projectFolder = makeFolder(outputFolderLocation, "ChannelNarrowingProject")
     inputFolder = makeFolder(projectFolder, "01_Inputs")
-    historicBankfull, modernBankfull, centerline, reachBreaks = copyInputs(inputFolder, historicBankfull, modernBankfull, centerline, reachBreaks)
-
-    outputFolder, analysesFolder, historicBankfull, modernBankfull, centerline = writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBreaks, centerline, isSegmented)
+    historicBankfull, modernBankfull, modernCenterline, historicCenterline, reachBreaks = copyInputs(inputFolder, historicBankfull, modernBankfull,
+                                                                                                     modernCenterline, historicCenterline, reachBreaks)
+    outputFolder,\
+    analysesFolder,\
+    historicBankfull,\
+    modernBankfull,\
+    modernCenterline,\
+    historicCenterline = writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBreaks, modernCenterline, historicCenterline, isSegmented)
 
     addedFields = ["Hist_Area", "Crnt_Area", "Seg_Length", "Hist_Width", "Crnt_Width", "WidthRed", "AreaRed"]
     assignArea(historicBankfull, addedFields[0])
@@ -44,7 +49,7 @@ def main(historicBankfull, modernBankfull, reachBreaks, centerline, outputFolder
     polygonOutputLayer = "PolygonOutput_lyr"
     centerlineLayer = "Centerline_lyr"
     polylineLayer = "Polyline_lyr"
-    arcpy.MakeFeatureLayer_management(centerline, centerlineLayer)
+    arcpy.MakeFeatureLayer_management(modernCenterline, centerlineLayer)
     arcpy.MakeFeatureLayer_management(polygonOutputFile, polygonOutputLayer)
 
     arcpy.SpatialJoin_analysis(centerlineLayer, polygonOutputLayer, polylineOutputFile, match_option="INTERSECT")
@@ -61,14 +66,14 @@ def main(historicBankfull, modernBankfull, reachBreaks, centerline, outputFolder
     deleteWithArcpy([historicBankfullLayer, modernBankfullLayer, polygonOutputLayer, centerlineLayer, polylineLayer])
 
 
-def writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBreaks, centerline, isSegmented):
+def writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBreaks, modernCenterline, historicCenterline, isSegmented):
     """
     Writes the structure of the output folder and creates the intermediates
     :param projectFolder: The path to the root of the project
     :param historicBankfull: Path to the historic bankfull (copied into inputs)
     :param modernBankfull: Path to the modern bankfull (copied into inputs)
     :param reachBreaks: Path to the reach breaks
-    :param centerline: path to the centerline
+    :param modernCenterline: path to the centerline
     :param isSegmented: Tells us if it's been segmented manually
     :return:
     """
@@ -83,22 +88,24 @@ def writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBrea
     if not isSegmented:
         intermediateFolder = makeFolder(outputFolder, "01_Intermediates")
         modernBankfull, historicBankfull = segmentBankfulls(historicBankfull, modernBankfull, reachBreaks, intermediateFolder)
-        centerline = segmentCenterline(centerline, reachBreaks, intermediateFolder)
+
+        modernCenterlineFolder = makeFolder(intermediateFolder, findAvailableNum(intermediateFolder) + "_ModernSegmentedCenterline")
+        modernCenterline = segmentCenterline(modernCenterline, reachBreaks, modernCenterlineFolder)
+        historicCenterlineFolder = makeFolder(intermediateFolder, findAvailableNum(intermediateFolder) + "_HistoricSegmentedCenterline")
+        historicCenterline = segmentCenterline(modernCenterline, reachBreaks, historicCenterlineFolder)
 
     arcpy.AddMessage("Making Analyses...")
     analysesFolder = makeFolder(outputFolder, findAvailableNum(outputFolder) + "_Analyses")
-    return outputFolder, analysesFolder, historicBankfull, modernBankfull, centerline
+    return outputFolder, analysesFolder, historicBankfull, modernBankfull, modernCenterline, historicCenterline
 
 
-def segmentCenterline(centerline, reachBreaks, intermediateFolder):
+def segmentCenterline(centerline, reachBreaks, centerlineFolder):
     """
     Segments the centerline by the reach breaks
     :param centerline: The path to our centerline
     :param reachBreaks: The path to our reach breaks
     :return:
     """
-    centerlineFolder = makeFolder(intermediateFolder, findAvailableNum(intermediateFolder) + "_SegmentedCenterline")
-
     givenBankfullLayer = os.path.join(centerlineFolder, "old.lyr")
     arcpy.MakeFeatureLayer_management(centerline, givenBankfullLayer)
 
@@ -128,13 +135,13 @@ def segmentCenterline(centerline, reachBreaks, intermediateFolder):
     return cleanedSegCenterline
 
 
-def copyInputs(inputFolder, historicBankfull, modernBankfull, centerline, reachBreak):
+def copyInputs(inputFolder, historicBankfull, modernBankfull, modernCenterline, historicCenterline, reachBreak):
     """
     Puts the inputs in the proper folder structure
     :param inputFolder: Where to put everything
     :param historicBankfull: A polygon with the historic bankfull value
     :param modernBankfull: A polygon with the modern bankfull value
-    :param centerline: The centerline of the modern bankfull polygon
+    :param modernCenterline: The centerline of the modern bankfull polygon
     :param reachBreak: A series of lines that tell us when to break the thing
     :return: A tuple with the paths to the copies of the inputs
     """
@@ -146,20 +153,24 @@ def copyInputs(inputFolder, historicBankfull, modernBankfull, centerline, reachB
     modernBankfullCopy = os.path.join(modernBankfullFolder, os.path.basename(modernBankfull))
     arcpy.Copy_management(modernBankfull, modernBankfullCopy)
 
-    centerlineFolder = makeFolder(inputFolder, "03_Centerline")
-    centerlineCopy = os.path.join(centerlineFolder, os.path.basename(centerline))
-    arcpy.Copy_management(centerline, centerlineCopy)
+    modernCenterlineFolder = makeFolder(inputFolder, "03_ModernCenterline")
+    modernCenterlineCopy = os.path.join(modernCenterlineFolder, os.path.basename(modernCenterline))
+    arcpy.Copy_management(modernCenterline, modernCenterlineCopy)
+
+    historicCenterlineFolder = makeFolder(inputFolder, "04_HistoricCenterline")
+    historicCenterlineCopy = os.path.join(historicCenterlineFolder, os.path.basename(historicCenterline))
+    arcpy.Copy_management(historicCenterline, historicCenterlineCopy)
 
     reachBreakCopy = None
     if reachBreak:
-        reachBreakFolder = makeFolder(inputFolder, "04_ReachBreaks")
+        reachBreakFolder = makeFolder(inputFolder, "05_ReachBreaks")
         reachBreakCopy = os.path.join(reachBreakFolder, os.path.basename(reachBreak))
         if arcpy.Describe(reachBreak).shapeType == "Polygon":
             arcpy.FeatureToLine_management(reachBreak, reachBreakCopy)
         else:
             arcpy.Copy_management(reachBreak, reachBreakCopy)
 
-    return historicBankfullCopy, modernBankfullCopy, centerlineCopy, reachBreakCopy
+    return historicBankfullCopy, modernBankfullCopy, modernCenterlineCopy, historicCenterlineCopy, reachBreakCopy
 
 
 def segmentBankfulls(historicBankfull, modernBankfull, reachBreak, intermediateFolder):
