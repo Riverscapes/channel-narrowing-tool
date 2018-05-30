@@ -27,7 +27,7 @@ def main(historicBankfull, modernBankfull, reachBreaks, centerline, outputFolder
 
     outputFolder, analysesFolder, historicBankfull, modernBankfull, centerline = writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBreaks, centerline, isSegmented)
 
-    addedFields = ["Hist_Area", "Crnt_Area", "Seg_Length"]
+    addedFields = ["Hist_Area", "Crnt_Area", "Seg_Length", "Hist_Width", "Crnt_Width", "WidthRed", "AreaRed"]
     assignArea(historicBankfull, addedFields[0])
     assignArea(modernBankfull, addedFields[1])
 
@@ -48,6 +48,7 @@ def main(historicBankfull, modernBankfull, reachBreaks, centerline, outputFolder
 
     arcpy.SpatialJoin_analysis(centerlineLayer, polygonOutputLayer, polylineOutputFile, match_option="INTERSECT")
     assignLength(polylineOutputFile, addedFields[2])
+    assignCalcValues(polylineOutputFile, addedFields[3], addedFields[4], addedFields[5], addedFields[6])
     cleanUpFields(polylineOutputFile, addedFields)
 
     deleteWithArcpy([historicBankfullLayer, modernBankfullLayer, polygonOutputLayer, centerlineLayer])
@@ -56,12 +57,12 @@ def main(historicBankfull, modernBankfull, reachBreaks, centerline, outputFolder
 def writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBreaks, centerline, isSegmented):
     """
     Writes the structure of the output folder and creates the intermediates
-    :param projectFolder:
-    :param historicBankfull:
-    :param modernBankfull:
-    :param reachBreaks:
-    :param centerline:
-    :param isSegmented:
+    :param projectFolder: The path to the root of the project
+    :param historicBankfull: Path to the historic bankfull (copied into inputs)
+    :param modernBankfull: Path to the modern bankfull (copied into inputs)
+    :param reachBreaks: Path to the reach breaks
+    :param centerline: path to the centerline
+    :param isSegmented: Tells us if it's been segmented manually
     :return:
     """
     j = 1
@@ -84,9 +85,9 @@ def writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBrea
 
 def segmentCenterline(centerline, reachBreaks, intermediateFolder):
     """
-
-    :param centerline:
-    :param reachBreaks:
+    Segments the centerline by the reach breaks
+    :param centerline: The path to our centerline
+    :param reachBreaks: The path to our reach breaks
     :return:
     """
     centerlineFolder = makeFolder(intermediateFolder, findAvailableNum(intermediateFolder) + "_SegmentedCenterline")
@@ -250,6 +251,53 @@ def assignLength(featureClass, fieldName="Length"):
         for row in cursor:
             row[1] = getSqrMeters(row[0], units)
             cursor.updateRow(row)
+
+
+def assignCalcValues(featureClass, histWidthFieldName, currentWidthFieldName, widthRedFieldName, areaRedFieldName):
+    """
+    Calculates the values and gives them to the polyline
+    :param featureClass:
+    :param histWidthFieldName:
+    :param currentWidthFieldName:
+    :param widthRedFieldName:
+    :param areaRedFieldName:
+    :return:
+    """
+    arcpy.AddField_management(featureClass, histWidthFieldName, "DOUBLE")
+    arcpy.AddField_management(featureClass, currentWidthFieldName, "DOUBLE")
+    arcpy.AddField_management(featureClass, widthRedFieldName, "DOUBLE")
+    arcpy.AddField_management(featureClass, areaRedFieldName, "DOUBLE")
+
+    with arcpy.da.UpdateCursor(featureClass, ['Crnt_Area', 'Hist_Area', 'Seg_Length', histWidthFieldName, currentWidthFieldName, widthRedFieldName, areaRedFieldName]) as cursor:
+        for row in cursor:
+            currentArea = row[0]
+            histArea = row[1]
+            length = row[2]
+
+            histWidth = histArea / length
+            row[3] = histWidth
+
+            currentWidth = currentArea / length
+            row[4] = currentWidth
+
+            widthReduction = findPercentReduction(currentWidth, histWidth)
+            row[5] = widthReduction
+
+            areaReduction = findPercentReduction(currentArea, histArea)
+            row[6] = areaReduction
+
+            cursor.updateRow(row)
+
+
+def findPercentReduction(currentValue, historicValue):
+    """
+    Finds the percentage reduction between two values between two values
+    :param currentValue: The modern value
+    :param historicValue: The historic value that we want to compare it to
+    :return:
+    """
+    return abs((historicValue - currentValue) / historicValue) * 100
+
 
 
 def getMeters(length, units):
