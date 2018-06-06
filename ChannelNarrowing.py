@@ -25,45 +25,39 @@ def main(historicBankfull, modernBankfull, reachBreaks, modernCenterline, histor
     inputFolder = makeFolder(projectFolder, "01_Inputs")
     historicBankfull, modernBankfull, modernCenterline, historicCenterline, reachBreaks = copyInputs(inputFolder, historicBankfull, modernBankfull,
                                                                                                      modernCenterline, historicCenterline, reachBreaks)
-    outputFolder,\
-    analysesFolder,\
-    historicBankfull,\
-    modernBankfull,\
-    modernCenterline,\
-    historicCenterline = writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBreaks, modernCenterline, historicCenterline, isSegmented)
 
-    addedFields = ["Hist_Area", "Crnt_Area", "Seg_Length", "Hist_Width", "Crnt_Width", "WidthRed", "AreaRed"]
+    analysesFolder, historicBankfull, modernBankfull, modernCenterline, historicCenterline = writeOutputFolder(projectFolder, historicBankfull,
+                                                                                                                modernBankfull, reachBreaks,
+                                                                                                                modernCenterline, historicCenterline,
+                                                                                                                isSegmented)
+
+    addedFields = ["Hist_Area", "Crnt_Area", "HistLength", "CrntLength", "Hist_Width", "Crnt_Width", "WidthRed", "AreaRed"]
     assignArea(historicBankfull, addedFields[0])
     assignArea(modernBankfull, addedFields[1])
+    assignLength(historicCenterline, addedFields[2])
+    assignLength(modernCenterline, addedFields[3])
 
-    historicBankfullLayer = "historicBankful_lyr"
-    modernBankfullLayer = "modernBankful_lyr"
-    arcpy.MakeFeatureLayer_management(historicBankfull, historicBankfullLayer)
-    arcpy.MakeFeatureLayer_management(modernBankfull, modernBankfullLayer)
+    historicCombined = os.path.join(os.path.dirname(historicBankfull), "CombinedHistoricBankfull.shp")
+    spatialJoinShapeFiles(historicBankfull, historicCenterline, historicCombined)
+    cleanUpFields(historicCombined, addedFields)
+
+    modernCombined = os.path.join(os.path.dirname(modernBankfull), "CombinedModernBankfull.shp")
+    spatialJoinShapeFiles(modernBankfull, modernCenterline, modernCombined)
+    cleanUpFields(modernCombined, addedFields)
+
     polygonOutputFile = os.path.join(analysesFolder, outputName + "_Polygon.shp")
-
-    arcpy.SpatialJoin_analysis(modernBankfullLayer, historicBankfullLayer, polygonOutputFile, match_option="INTERSECT")
-
-    polylineOutputFile = os.path.join(analysesFolder, outputName + "_Polyline.shp")
-
-    polygonOutputLayer = "PolygonOutput_lyr"
-    centerlineLayer = "Centerline_lyr"
-    polylineLayer = "Polyline_lyr"
-    arcpy.MakeFeatureLayer_management(modernCenterline, centerlineLayer)
-    arcpy.MakeFeatureLayer_management(polygonOutputFile, polygonOutputLayer)
-
-    arcpy.SpatialJoin_analysis(centerlineLayer, polygonOutputLayer, polylineOutputFile, match_option="INTERSECT")
-    assignLength(polylineOutputFile, addedFields[2])
-    assignCalcValues(polylineOutputFile, addedFields[3], addedFields[4], addedFields[5], addedFields[6])
-    cleanUpFields(polylineOutputFile, addedFields)
-
-    arcpy.MakeFeatureLayer_management(polylineOutputFile, polylineLayer)
-
-    arcpy.Delete_management(polygonOutputFile)
-    arcpy.SpatialJoin_analysis(modernBankfullLayer, polylineLayer, polygonOutputFile, match_option="INTERSECT")
+    spatialJoinShapeFiles(modernCombined, historicCombined, polygonOutputFile)
     cleanUpFields(polygonOutputFile, addedFields)
 
-    deleteWithArcpy([historicBankfullLayer, modernBankfullLayer, polygonOutputLayer, centerlineLayer, polylineLayer])
+    polylineOutputFile = os.path.join(analysesFolder, outputName + "_Polyline.shp")
+    spatialJoinShapeFiles(modernCenterline, polygonOutputFile, polylineOutputFile)
+    cleanUpFields(polylineOutputFile, addedFields)
+
+    assignCalcValues(polygonOutputFile, addedFields[0], addedFields[1], addedFields[2], addedFields[3], addedFields[4], addedFields[5], addedFields[6], addedFields[7])
+    assignCalcValues(polylineOutputFile, addedFields[0], addedFields[1], addedFields[2], addedFields[3], addedFields[4], addedFields[5], addedFields[6], addedFields[7])
+
+    cleanUpFields(polygonOutputFile, addedFields)
+    cleanUpFields(polylineOutputFile, addedFields)
 
 
 def writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBreaks, modernCenterline, historicCenterline, isSegmented):
@@ -73,7 +67,8 @@ def writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBrea
     :param historicBankfull: Path to the historic bankfull (copied into inputs)
     :param modernBankfull: Path to the modern bankfull (copied into inputs)
     :param reachBreaks: Path to the reach breaks
-    :param modernCenterline: path to the centerline
+    :param modernCenterline: path to the modern centerline
+    :param historicCenterline: path to the historic centerline
     :param isSegmented: Tells us if it's been segmented manually
     :return:
     """
@@ -92,11 +87,11 @@ def writeOutputFolder(projectFolder, historicBankfull, modernBankfull, reachBrea
         modernCenterlineFolder = makeFolder(intermediateFolder, findAvailableNum(intermediateFolder) + "_ModernSegmentedCenterline")
         modernCenterline = segmentCenterline(modernCenterline, reachBreaks, modernCenterlineFolder)
         historicCenterlineFolder = makeFolder(intermediateFolder, findAvailableNum(intermediateFolder) + "_HistoricSegmentedCenterline")
-        historicCenterline = segmentCenterline(modernCenterline, reachBreaks, historicCenterlineFolder)
+        historicCenterline = segmentCenterline(historicCenterline, reachBreaks, historicCenterlineFolder)
 
     arcpy.AddMessage("Making Analyses...")
     analysesFolder = makeFolder(outputFolder, findAvailableNum(outputFolder) + "_Analyses")
-    return outputFolder, analysesFolder, historicBankfull, modernBankfull, modernCenterline, historicCenterline
+    return analysesFolder, historicBankfull, modernBankfull, modernCenterline, historicCenterline
 
 
 def segmentCenterline(centerline, reachBreaks, centerlineFolder):
@@ -271,38 +266,50 @@ def assignLength(featureClass, fieldName="Length"):
             cursor.updateRow(row)
 
 
-def assignCalcValues(featureClass, histWidthFieldName, currentWidthFieldName, widthRedFieldName, areaRedFieldName):
+def rejoinWithPolygon(polylineOutputFile, modernBankfull, polygonOutputFile, addedFields):
+    """
+    Spatially joins with the polygon, so that the calculated values are present in the polygon output file
+    :param polylineOutputFile: Path to the polyline output file
+    :param polygonOutputFile: Path to the polygon output file
+    :param modernBankfull: Path to the modern bankfull polygon
+    :param addedFields: Field to not delete in cleanUpFields()
+    :return:
+    """
+    arcpy.Delete_management(polygonOutputFile)
+    spatialJoinShapeFiles(modernBankfull, polylineOutputFile, polygonOutputFile)
+    cleanUpFields(polygonOutputFile, addedFields)
+
+
+
+def assignCalcValues(featureClass, historicAreaFieldName, currentAreaFieldName, histLengthFieldName, currentLengthFieldName, histWidthFieldName, currentWidthFieldName, widthRedFieldName, areaRedFieldName):
     """
     Calculates the values and gives them to the polyline
-    :param featureClass:
-    :param histWidthFieldName:
-    :param currentWidthFieldName:
-    :param widthRedFieldName:
-    :param areaRedFieldName:
-    :return:
     """
     arcpy.AddField_management(featureClass, histWidthFieldName, "DOUBLE")
     arcpy.AddField_management(featureClass, currentWidthFieldName, "DOUBLE")
     arcpy.AddField_management(featureClass, widthRedFieldName, "DOUBLE")
     arcpy.AddField_management(featureClass, areaRedFieldName, "DOUBLE")
 
-    with arcpy.da.UpdateCursor(featureClass, ['Crnt_Area', 'Hist_Area', 'Seg_Length', histWidthFieldName, currentWidthFieldName, widthRedFieldName, areaRedFieldName]) as cursor:
+    with arcpy.da.UpdateCursor(featureClass, [currentAreaFieldName, historicAreaFieldName, histLengthFieldName,
+                                              currentLengthFieldName, histWidthFieldName, currentWidthFieldName,
+                                              widthRedFieldName, areaRedFieldName]) as cursor:
         for row in cursor:
             currentArea = row[0]
             histArea = row[1]
-            length = row[2]
+            histLength = row[2]
+            currentLength = row[3]
 
-            histWidth = histArea / length
-            row[3] = histWidth
+            histWidth = histArea / histLength
+            row[4] = histWidth
 
-            currentWidth = currentArea / length
-            row[4] = currentWidth
+            currentWidth = currentArea / currentLength
+            row[5] = currentWidth
 
             widthReduction = findPercentReduction(currentWidth, histWidth)
-            row[5] = widthReduction
+            row[6] = widthReduction
 
             areaReduction = findPercentReduction(currentArea, histArea)
-            row[6] = areaReduction
+            row[7] = areaReduction
 
             cursor.updateRow(row)
 
@@ -397,6 +404,24 @@ def cleanUpFields(outNetwork, newFields=[]):
 
     if len(removeFields) > 0:
         arcpy.DeleteField_management(outNetwork, removeFields)
+
+
+def spatialJoinShapeFiles(shapeOne, shapeTwo, outputLocation):
+    """
+    Makes the feature layers needed
+    :param shapeOne:
+    :param shapeTwo:
+    :param outputLocation:
+    :return:
+    """
+    layerOne = "LayerOne_lyr"
+    layerTwo = "LayerTwo_lyr"
+    arcpy.MakeFeatureLayer_management(shapeOne, layerOne)
+    arcpy.MakeFeatureLayer_management(shapeTwo, layerTwo)
+
+    arcpy.SpatialJoin_analysis(shapeOne, shapeTwo, outputLocation, match_option="INTERSECT")
+    deleteWithArcpy([layerOne, layerTwo])
+    return outputLocation
 
 
 def deleteWithArcpy(stuffToDelete):
